@@ -30,11 +30,12 @@ def create_app(test_config=None):
     # Import models here so SQLAlchemy is aware of them before migrations
     # or ``create_all`` run. Students will flesh these out in ``models.py``.
     import models  # noqa: F401
+    User = models.User
+    Post = models.Post
 
     @app.route("/")
     def index():
         """Simple sanity check route."""
-
         return jsonify({"message": "Welcome to the Flask + SQLAlchemy assignment"})
 
     @app.route("/users", methods=["GET", "POST"])
@@ -44,11 +45,21 @@ def create_app(test_config=None):
         TODO: Students should query ``User`` objects, serialize them to JSON,
         and handle incoming POST data to create new users.
         """
+        if request.method == "GET":
+            users = User.query.all()
+            return jsonify([{"id": u.id, "username": u.username} for u in users])
 
-        return (
-            jsonify({"message": "TODO: implement user listing/creation"}),
-            501,
-        )
+        if request.method == "POST":
+            data = request.get_json()
+            if not data.get("username"):
+                return jsonify({"error": "username is required"}), 400
+            if User.query.filter_by(username=data["username"]).first():
+                return jsonify({"error": "username already exists"}), 400
+
+            user = User(username=data["username"])
+            db.session.add(user)
+            db.session.commit()
+            return jsonify({"id": user.id, "username": user.username}), 201
 
     @app.route("/posts", methods=["GET", "POST"])
     def posts():
@@ -57,11 +68,36 @@ def create_app(test_config=None):
         TODO: Students should query ``Post`` objects, include user data, and
         allow creating posts tied to a valid ``user_id``.
         """
+        if request.method == "GET":
+            posts = Post.query.all()
+            return jsonify([
+                {
+                    "id": p.id,
+                    "title": p.title,
+                    "content": p.content,
+                    "user_id": p.user_id,
+                    "username": p.author.username
+                } for p in posts
+            ])
 
-        return (
-            jsonify({"message": "TODO: implement post listing/creation"}),
-            501,
-        )
+        if request.method == "POST":
+            data = request.get_json()
+            if not all(k in data for k in ("title", "content", "user_id")):
+                return jsonify({"error": "title, content, and user_id are required"}), 400
+            user = User.query.get(data["user_id"])
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+
+            post = Post(title=data["title"], content=data["content"], author=user)
+            db.session.add(post)
+            db.session.commit()
+            return jsonify({
+                "id": post.id,
+                "title": post.title,
+                "content": post.content,
+                "user_id": post.user_id,
+                "username": post.author.username
+            }), 201
 
     return app
 
